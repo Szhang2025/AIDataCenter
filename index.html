@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>US Data Center & AI Grid Atlas (2026)</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      background-color: #090d16;
+      color: #e2e8f0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      background: #090d16;
+      z-index: 1;
+    }
+
+    /* Dark Mode Leaflet Overrides */
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+      background-color: #0f172a;
+      color: #f8fafc;
+      border: 1px solid #334155;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7);
+      border-radius: 0.75rem;
+    }
+    .leaflet-popup-close-button {
+      color: #94a3b8 !important;
+      padding: 6px 8px !important;
+    }
+    .leaflet-popup-close-button:hover {
+      color: #f8fafc !important;
+    }
+    .leaflet-control-zoom a {
+      background-color: #0f172a !important;
+      color: #e2e8f0 !important;
+      border-color: #334155 !important;
+    }
+    .leaflet-control-zoom a:hover {
+      background-color: #1e293b !important;
+    }
+    .leaflet-control-attribution {
+      background: rgba(15, 23, 42, 0.85) !important;
+      color: #64748b !important;
+    }
+    .leaflet-control-attribution a {
+      color: #38bdf8 !important;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Pulse animation for Gigawatt (>1000 MW) facilities */
+    @keyframes gwPulse {
+      0% { transform: scale(1); opacity: 0.8; }
+      70% { transform: scale(2.1); opacity: 0; }
+      100% { transform: scale(2.1); opacity: 0; }
+    }
+    .gw-pulse-ring {
+      animation: gwPulse 2.4s infinite ease-out;
+      transform-origin: center;
+    }
+
+    /* State Bubble Marker */
+    .state-bubble {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9999px;
+      font-weight: 700;
+      color: #ffffff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+      border: 1.5px solid rgba(56, 189, 248, 0.75);
+      background: radial-gradient(circle, rgba(14, 165, 233, 0.55) 0%, rgba(2, 132, 199, 0.25) 100%);
+      box-shadow: 0 0 14px rgba(14, 165, 233, 0.35);
+      transition: transform 0.15s ease;
+    }
+    .state-bubble:hover {
+      transform: scale(1.12);
+      border-color: #bae6fd;
+      z-index: 999 !important;
+    }
+  </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+  <!-- Top Header Bar -->
+  <header class="bg-slate-900/95 border-b border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 z-20 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg bg-cyan-500/15 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="6" rx="1"></rect>
+          <rect x="2" y="15" width="20" height="6" rx="1"></rect>
+          <line x1="6" y1="6" x2="6.01" y2="6"></line>
+          <line x1="6" y1="18" x2="6.01" y2="18"></line>
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">US Data Center &amp; AI Grid Atlas</h1>
+          <span class="hidden sm:inline-block text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">2026 Dataset</span>
+        </div>
+        <p class="text-xs text-slate-400">Existing, Under-Construction &amp; Proposed Hyperscale Campuses + All 50 States + DC Density</p>
+      </div>
+    </div>
+
+    <!-- KPI Pills -->
+    <div class="flex items-center gap-2 sm:gap-3 text-xs">
+      <div class="bg-slate-800/90 border border-slate-700/80 px-3 py-1.5 rounded-lg">
+        <span class="text-slate-400 block text-[10px] uppercase tracking-wider">US Tracked Buildings</span>
+        <span class="font-bold text-white text-sm" id="kpiTotalBuildings">4,658</span>
+        <span class="text-cyan-400 text-[11px] ml-1">(50 States+DC)</span>
+      </div>
+      <div class="bg-slate-800/90 border border-slate-700/80 px-3 py-1.5 rounded-lg">
+        <span class="text-slate-400 block text-[10px] uppercase tracking-wider">Filtered Campuses</span>
+        <span class="font-bold text-emerald-400 text-sm" id="kpiFilteredCount">46</span>
+      </div>
+      <div class="hidden md:block bg-slate-800/90 border border-slate-700/80 px-3 py-1.5 rounded-lg">
+        <span class="text-slate-400 block text-[10px] uppercase tracking-wider">Filtered Capacity</span>
+        <span class="font-bold text-amber-400 text-sm" id="kpiFilteredMW">0 MW</span>
+      </div>
+      <button onclick="openAddModal()" class="bg-cyan-600 hover:bg-cyan-500 text-white font-semibold px-3 py-2 rounded-lg transition flex items-center gap-1.5 shadow-lg shadow-cyan-950/50 cursor-pointer">
+        <span>+ Add Campus</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Split -->
+  <div class="flex flex-1 overflow-hidden relative">
+    
+    <!-- Left Sidebar -->
+    <aside id="sidebar" class="w-full sm:w-96 bg-slate-900/95 border-r border-slate-800 flex flex-col z-10 shrink-0 transition-all duration-200">
+      
+      <!-- Layer Toggles & Click-to-Pin -->
+      <div class="p-3 border-b border-slate-800 bg-slate-900/60 space-y-2.5">
+        <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
+          <span>MAP LAYERS</span>
+          <button id="clickPinToggle" onclick="toggleClickToPin()" class="px-2 py-1 rounded border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition cursor-pointer">
+            📍 Click-to-Pin: OFF
+          </button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <label class="flex items-center gap-2 bg-slate-800/70 border border-slate-700/70 px-2.5 py-1.5 rounded-lg cursor-pointer hover:border-slate-600">
+            <input type="checkbox" id="toggleCampuses" checked onchange="renderMapLayers()" class="accent-cyan-500 rounded" />
+            <span>Hyperscale Pins</span>
+          </label>
+          <label class="flex items-center gap-2 bg-slate-800/70 border border-slate-700/70 px-2.5 py-1.5 rounded-lg cursor-pointer hover:border-slate-600">
+            <input type="checkbox" id="toggleStates" checked onchange="renderMapLayers()" class="accent-cyan-500 rounded" />
+            <span>State Totals (51)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="p-3 border-b border-slate-800 space-y-2.5">
+        <div class="relative">
+          <input type="text" id="searchInput" oninput="applyFilters()" placeholder="Search project, operator, city, state..." 
+            class="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500" />
+          <svg class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+          </svg>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <select id="statusFilter" onchange="applyFilters()" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option value="ALL">All Statuses</option>
+            <option value="Operating">Operating (Existing)</option>
+            <option value="Under Construction">Under Construction</option>
+            <option value="Proposed">Proposed / Planned</option>
+          </select>
+
+          <select id="operatorFilter" onchange="applyFilters()" class="bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option value="ALL">All Operators</option>
+            <option value="OpenAI">OpenAI / Stargate</option>
+            <option value="Microsoft">Microsoft</option>
+            <option value="Google">Google</option>
+            <option value="AWS">Amazon / AWS</option>
+            <option value="Meta">Meta</option>
+            <option value="Oracle">Oracle</option>
+            <option value="xAI">xAI / SpaceX</option>
+            <option value="QTS">QTS</option>
+            <option value="Vantage">Vantage</option>
+            <option value="Other">Independent / Other</option>
+          </select>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <select id="stateFilter" onchange="applyFilters()" class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option value="ALL">All States (50 States + DC)</option>
+          </select>
+          <button onclick="resetFilters()" class="text-[11px] text-cyan-400 hover:text-cyan-300 px-2 py-1 cursor-pointer">Reset</button>
+        </div>
+      </div>
+
+      <!-- Tabs: Campuses vs State Rankings -->
+      <div class="flex border-b border-slate-800 text-xs font-semibold">
+        <button id="tabCampuses" onclick="switchTab('campuses')" class="flex-1 py-2 text-center border-b-2 border-cyan-500 text-cyan-400 bg-slate-800/40 cursor-pointer">
+          Hyperscale Campuses (<span id="tabCampusCount">46</span>)
+        </button>
+        <button id="tabStates" onclick="switchTab('states')" class="flex-1 py-2 text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer">
+          State Totals (51)
+        </button>
+      </div>
+
+      <!-- List Container -->
+      <div id="listContainer" class="flex-1 overflow-y-auto divide-y divide-slate-800/80">
+        <!-- Populated dynamically -->
+      </div>
+
+      <!-- Footer Export Bar -->
+      <div class="p-2.5 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-[11px] text-slate-400">
+        <div class="flex items-center gap-2">
+          <button onclick="exportCSV()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition cursor-pointer">Export CSV</button>
+          <button onclick="exportJSON()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition cursor-pointer">Export JSON</button>
+        </div>
+        <button onclick="resetCustomPins()" id="clearCustomBtn" class="hidden text-rose-400 hover:text-rose-300 cursor-pointer">Clear Custom</button>
+      </div>
+    </aside>
+
+    <!-- Interactive Map Canvas -->
+    <main class="flex-1 relative h-full">
+      <div id="map"></div>
+
+      <!-- Floating Legend -->
+      <div class="absolute bottom-6 right-4 z-[1000] bg-slate-900/95 backdrop-blur border border-slate-700/90 rounded-xl p-3 shadow-2xl text-xs max-w-[235px]">
+        <div class="font-bold text-slate-200 mb-2 flex items-center justify-between">
+          <span>LEGEND</span>
+          <span class="text-[10px] text-slate-400 font-normal">Size = MW Capacity</span>
+        </div>
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-emerald-400 inline-block shadow shadow-emerald-500/50"></span>
+            <span class="text-slate-300">Operating (Existing)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-amber-400 inline-block shadow shadow-amber-500/50"></span>
+            <span class="text-slate-300">Under Construction</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-purple-400 inline-block shadow shadow-purple-500/50"></span>
+            <span class="text-slate-300">Proposed / Planned</span>
+          </div>
+          <div class="flex items-center gap-2 pt-1 border-t border-slate-800">
+            <span class="w-3.5 h-3.5 rounded-full border border-cyan-400 bg-cyan-500/30 inline-block"></span>
+            <span class="text-slate-300">State Total Facility Count</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full border-2 border-white/70 bg-transparent inline-block"></span>
+            <span class="text-slate-400 text-[11px]">Pulse Ring = &ge;1,000 MW (1 GW+)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Click-to-pin Banner -->
+      <div id="pinBanner" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-cyan-600 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg border border-cyan-300">
+        Click anywhere on the US map to place a new proposed data center
+      </div>
+    </main>
+  </div>
+
+  <!-- Add Custom Data Center Modal -->
+  <div id="addModal" class="hidden fixed inset-0 z-[2000] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-bold text-white">Add Proposed / Existing Data Center</h2>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-white text-lg leading-none cursor-pointer">&times;</button>
+      </div>
+      <form id="addCampusForm" onsubmit="saveCustomCampus(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-300 mb-1">Project / Campus Name *</label>
+          <input type="text" id="newName" required placeholder="e.g., Project Nova AI Campus" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-300 mb-1">Operator *</label>
+            <input type="text" id="newOperator" required placeholder="e.g., Google, QTS, xAI" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+          </div>
+          <div>
+            <label class="block text-slate-300 mb-1">Status *</label>
+            <select id="newStatus" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white">
+              <option value="Proposed">Proposed</option>
+              <option value="Under Construction">Under Construction</option>
+              <option value="Operating">Operating</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-300 mb-1">City / County *</label>
+            <input type="text" id="newCity" required placeholder="e.g., Becker" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+          </div>
+          <div>
+            <label class="block text-slate-300 mb-1">State Abbreviation *</label>
+            <input type="text" id="newState" required maxlength="2" placeholder="e.g., MN" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white uppercase" />
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-slate-300 mb-1">Capacity (MW) *</label>
+            <input type="number" id="newMW" required min="1" value="500" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+          </div>
+          <div>
+            <label class="block text-slate-300 mb-1">Latitude *</label>
+            <input type="number" step="any" id="newLat" required placeholder="45.39" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+          </div>
+          <div>
+            <label class="block text-slate-300 mb-1">Longitude *</label>
+            <input type="number" step="any" id="newLng" required placeholder="-93.88" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-slate-300 mb-1">Notes / Grid Details</label>
+          <input type="text" id="newNotes" placeholder="Utility, target completion year, or cooling info" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeAddModal()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold cursor-pointer">Save Pin</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. ALL 50 US STATES + DC DATASET (2026 Tracked Totals)
+    // =========================================================================
+    const STATE_DATA = [
+      { code: "VA", name: "Virginia", total: 853, operating: 718, pipeline: 135, lat: 37.54, lng: -78.85, hub: "Ashburn / Data Center Alley" },
+      { code: "TX", name: "Texas", total: 821, operating: 606, pipeline: 215, lat: 31.45, lng: -99.30, hub: "DFW, Abilene, San Antonio" },
+      { code: "GA", name: "Georgia", total: 303, operating: 162, pipeline: 141, lat: 32.65, lng: -83.45, hub: "Atlanta Metro, Effingham" },
+      { code: "PA", name: "Pennsylvania", total: 302, operating: 161, pipeline: 141, lat: 40.88, lng: -77.80, hub: "Lehigh Valley, Susquehanna" },
+      { code: "CA", name: "California", total: 301, operating: 277, pipeline: 24, lat: 37.15, lng: -119.45, hub: "Silicon Valley, LA" },
+      { code: "IL", name: "Illinois", total: 249, operating: 192, pipeline: 57, lat: 40.10, lng: -89.20, hub: "Chicago / Elk Grove" },
+      { code: "OH", name: "Ohio", total: 215, operating: 142, pipeline: 73, lat: 40.35, lng: -82.80, hub: "New Albany / Columbus" },
+      { code: "AZ", name: "Arizona", total: 171, operating: 112, pipeline: 59, lat: 34.25, lng: -111.65, hub: "Phoenix / Mesa / Goodyear" },
+      { code: "OR", name: "Oregon", total: 137, operating: 111, pipeline: 26, lat: 44.00, lng: -120.55, hub: "Hillsboro, The Dalles, Prineville" },
+      { code: "NC", name: "North Carolina", total: 130, operating: 92, pipeline: 38, lat: 35.55, lng: -79.40, hub: "Charlotte, Maiden, Lenoir" },
+      { code: "WA", name: "Washington", total: 122, operating: 102, pipeline: 20, lat: 47.40, lng: -120.50, hub: "Quincy, Seattle" },
+      { code: "NY", name: "New York", total: 121, operating: 104, pipeline: 17, lat: 42.90, lng: -75.50, hub: "NYC, Buffalo, Western NY" },
+      { code: "NJ", name: "New Jersey", total: 114, operating: 98, pipeline: 16, lat: 40.15, lng: -74.65, hub: "Secaucus / Northern NJ" },
+      { code: "FL", name: "Florida", total: 108, operating: 92, pipeline: 16, lat: 28.40, lng: -81.65, hub: "Miami, Jacksonville" },
+      { code: "IN", name: "Indiana", total: 96, operating: 52, pipeline: 44, lat: 39.90, lng: -86.25, hub: "New Carlisle, Fort Wayne" },
+      { code: "IA", name: "Iowa", total: 88, operating: 68, pipeline: 20, lat: 42.00, lng: -93.50, hub: "Council Bluffs, Altoona" },
+      { code: "NV", name: "Nevada", total: 79, operating: 54, pipeline: 25, lat: 39.35, lng: -116.65, hub: "Reno / Tahoe, Las Vegas" },
+      { code: "CO", name: "Colorado", total: 64, operating: 54, pipeline: 10, lat: 39.00, lng: -105.55, hub: "Denver / Aurora" },
+      { code: "UT", name: "Utah", total: 62, operating: 43, pipeline: 19, lat: 39.35, lng: -111.65, hub: "Salt Lake City, Eagle Mountain" },
+      { code: "MD", name: "Maryland", total: 58, operating: 41, pipeline: 17, lat: 39.05, lng: -76.80, hub: "Frederick / Quantum Loophole" },
+      { code: "MN", name: "Minnesota", total: 56, operating: 42, pipeline: 14, lat: 46.10, lng: -94.30, hub: "Minneapolis, Becker, Rosemount" },
+      { code: "MI", name: "Michigan", total: 54, operating: 38, pipeline: 16, lat: 43.35, lng: -84.55, hub: "Grand Rapids, Saline" },
+      { code: "WI", name: "Wisconsin", total: 51, operating: 34, pipeline: 17, lat: 44.50, lng: -89.65, hub: "Mount Pleasant, Port Washington" },
+      { code: "MA", name: "Massachusetts", total: 49, operating: 44, pipeline: 5, lat: 42.30, lng: -71.80, hub: "Boston / Marlborough" },
+      { code: "SC", name: "South Carolina", total: 47, operating: 32, pipeline: 15, lat: 33.85, lng: -80.90, hub: "Berkeley County, Aiken" },
+      { code: "TN", name: "Tennessee", total: 45, operating: 34, pipeline: 11, lat: 35.85, lng: -86.35, hub: "Memphis, Nashville" },
+      { code: "MO", name: "Missouri", total: 44, operating: 35, pipeline: 9, lat: 38.45, lng: -92.45, hub: "Kansas City, St. Louis" },
+      { code: "LA", name: "Louisiana", total: 39, operating: 21, pipeline: 18, lat: 31.10, lng: -91.95, hub: "Richland Parish, Baton Rouge" },
+      { code: "NE", name: "Nebraska", total: 36, operating: 28, pipeline: 8, lat: 41.50, lng: -99.75, hub: "Papillion / Omaha" },
+      { code: "AL", name: "Alabama", total: 32, operating: 22, pipeline: 10, lat: 32.75, lng: -86.75, hub: "Huntsville, Montgomery" },
+      { code: "OK", name: "Oklahoma", total: 31, operating: 22, pipeline: 9, lat: 35.55, lng: -97.50, hub: "Pryor, Tulsa, OKC" },
+      { code: "WY", name: "Wyoming", total: 29, operating: 16, pipeline: 13, lat: 43.00, lng: -107.55, hub: "Cheyenne" },
+      { code: "KY", name: "Kentucky", total: 28, operating: 21, pipeline: 7, lat: 37.55, lng: -85.25, hub: "Louisville, Brandenburg" },
+      { code: "KS", name: "Kansas", total: 27, operating: 21, pipeline: 6, lat: 38.50, lng: -98.35, hub: "Overland Park, Wichita" },
+      { code: "MS", name: "Mississippi", total: 26, operating: 14, pipeline: 12, lat: 32.75, lng: -89.65, hub: "Madison County, Meridian" },
+      { code: "NM", name: "New Mexico", total: 25, operating: 15, pipeline: 10, lat: 34.45, lng: -106.10, hub: "Los Lunas, Santa Teresa" },
+      { code: "CT", name: "Connecticut", total: 24, operating: 21, pipeline: 3, lat: 41.60, lng: -72.70, hub: "Stamford, Hartford" },
+      { code: "WV", name: "West Virginia", total: 22, operating: 8, pipeline: 14, lat: 38.65, lng: -80.65, hub: "Mason County, Mingo County" },
+      { code: "ND", name: "North Dakota", total: 21, operating: 14, pipeline: 7, lat: 47.45, lng: -100.45, hub: "Ellendale, Williston" },
+      { code: "AR", name: "Arkansas", total: 19, operating: 12, pipeline: 7, lat: 34.90, lng: -92.40, hub: "West Memphis, Little Rock" },
+      { code: "ID", name: "Idaho", total: 18, operating: 13, pipeline: 5, lat: 44.25, lng: -114.55, hub: "Kuna / Boise" },
+      { code: "DC", name: "District of Columbia", total: 16, operating: 15, pipeline: 1, lat: 38.90, lng: -77.03, hub: "Downtown DC" },
+      { code: "DE", name: "Delaware", total: 14, operating: 11, pipeline: 3, lat: 39.00, lng: -75.50, hub: "Wilmington, New Castle" },
+      { code: "NH", name: "New Hampshire", total: 13, operating: 11, pipeline: 2, lat: 43.65, lng: -71.55, hub: "Manchester, Londonderry" },
+      { code: "MT", name: "Montana", total: 12, operating: 8, pipeline: 4, lat: 46.90, lng: -109.65, hub: "Butte, Billings" },
+      { code: "SD", name: "South Dakota", total: 11, operating: 8, pipeline: 3, lat: 44.45, lng: -100.25, hub: "Sioux Falls" },
+      { code: "RI", name: "Rhode Island", total: 9, operating: 8, pipeline: 1, lat: 41.68, lng: -71.55, hub: "Providence" },
+      { code: "HI", name: "Hawaii", total: 9, operating: 8, pipeline: 1, lat: 21.35, lng: -157.85, hub: "Honolulu" },
+      { code: "ME", name: "Maine", total: 8, operating: 7, pipeline: 1, lat: 45.25, lng: -69.25, hub: "Portland" },
+      { code: "AK", name: "Alaska", total: 7, operating: 6, pipeline: 1, lat: 64.20, lng: -149.50, hub: "Anchorage" },
+      { code: "VT", name: "Vermont", total: 5, operating: 5, pipeline: 0, lat: 44.05, lng: -72.65, hub: "Burlington" }
+    ];
+
+    // =========================================================================
+    // 2. MAJOR EXISTING, UNDER-CONSTRUCTION & PROPOSED HYPERSCALE CAMPUSES
+    // =========================================================================
+    const BASE_CAMPUSES = [
+      { id: 1, name: "Monarch Compute Campus", operator: "Nscale / Independent", status: "Proposed", city: "Mason County", state: "WV", mw: 7920, lat: 38.82, lng: -82.02, notes: "Massive multi-gigawatt AI compute campus along Ohio River." },
+      { id: 2, name: "Meta Hyperion", operator: "Meta", status: "Under Construction", city: "Richland Parish", state: "LA", mw: 5000, lat: 32.45, lng: -91.75, notes: "$10B+ flagship AI supercluster; 2 GW initial phase scaling to 5 GW." },
+      { id: 3, name: "Project Camellia", operator: "OpenAI", status: "Proposed", city: "Springfield (Effingham Co.)", state: "GA", mw: 3200, lat: 32.37, lng: -81.31, notes: "Multi-gigawatt AI campus planned near Savannah port corridor." },
+      { id: 4, name: "Project Tembo", operator: "Google", status: "Proposed", city: "Cheyenne", state: "WY", mw: 2700, lat: 41.12, lng: -104.82, notes: "Major Wyoming hyperscale expansion paired with wind/gas power." },
+      { id: 5, name: "Stargate Jupiter", operator: "OpenAI / Oracle / Stack", status: "Under Construction", city: "Santa Teresa (Doña Ana)", state: "NM", mw: 2450, lat: 31.89, lng: -106.67, notes: "Part of the Stargate AI infrastructure initiative." },
+      { id: 6, name: "Microsoft Fairwater", operator: "Microsoft", status: "Under Construction", city: "Mount Pleasant", state: "WI", mw: 2401, lat: 42.72, lng: -87.91, notes: "$3.3B+ AI supercomputer campus in Racine County." },
+      { id: 7, name: "AWS Project Rainier (New Carlisle)", operator: "AWS", status: "Under Construction", city: "New Carlisle", state: "IN", mw: 2200, lat: 41.70, lng: -86.51, notes: "$11B+ Anthropic/AWS Trainium AI mega-campus." },
+      { id: 8, name: "Quantum Loophole Frederick", operator: "Quantum Loophole / TPG", status: "Under Construction", city: "Adamstown (Frederick Co.)", state: "MD", mw: 2100, lat: 39.31, lng: -77.48, notes: "2,100-acre former Alcoa smelter site converted into gigawatt campus." },
+      { id: 9, name: "Stargate Shackelford", operator: "OpenAI / Vantage", status: "Under Construction", city: "Shackelford County", state: "TX", mw: 1400, lat: 32.73, lng: -99.30, notes: "West Texas Stargate expansion campus." },
+      { id: 10, name: "Stargate Abilene (Lancium)", operator: "OpenAI / Oracle / Crusoe", status: "Operating", city: "Abilene", state: "TX", mw: 1200, lat: 32.49, lng: -99.78, notes: "Flagship Stargate AI cluster operating on West Texas grid." },
+      { id: 11, name: "Stargate Port Washington", operator: "OpenAI / Oracle / Vantage", status: "Proposed", city: "Port Washington", state: "WI", mw: 1200, lat: 43.39, lng: -87.88, notes: "Proposed Midwest Stargate AI campus north of Milwaukee." },
+      { id: 12, name: "Talen / AWS Susquehanna Nuclear Campus", operator: "AWS", status: "Operating", city: "Berwick", state: "PA", mw: 1200, lat: 41.09, lng: -76.15, notes: "Co-located directly behind the Susquehanna Steam Electric nuclear plant." },
+      { id: 13, name: "Colossus & Colossus 2", operator: "xAI", status: "Operating", city: "Memphis", state: "TN", mw: 1050, lat: 35.06, lng: -90.15, notes: "200,000+ GPU supercluster expanding past 1 GW capacity." },
+      { id: 14, name: "Meta New Albany Mega-Campus", operator: "Meta", status: "Operating", city: "New Albany", state: "OH", mw: 950, lat: 40.08, lng: -82.78, notes: "Major Midwest AI & cloud hub outside Columbus." },
+      { id: 15, name: "QTS Cedar Rapids Campus", operator: "QTS", status: "Under Construction", city: "Cedar Rapids", state: "IA", mw: 900, lat: 41.91, lng: -91.68, notes: "Hyperscale buildout in Eastern Iowa." },
+      { id: 16, name: "Switch Citadel Campus", operator: "Switch", status: "Operating", city: "Tahoe Reno", state: "NV", mw: 850, lat: 39.55, lng: -119.48, notes: "Largest colocation campus in Northern Nevada." },
+      { id: 17, name: "Google Council Bluffs Hub", operator: "Google", status: "Operating", city: "Council Bluffs", state: "IA", mw: 800, lat: 41.22, lng: -95.85, notes: "One of Google's largest global compute hubs." },
+      { id: 18, name: "QTS Fayetteville Campus", operator: "QTS", status: "Under Construction", city: "Fayetteville", state: "GA", mw: 780, lat: 33.42, lng: -84.48, notes: "South Atlanta hyperscale campus." },
+      { id: 19, name: "Microsoft Boydton Hyperscale", operator: "Microsoft", status: "Operating", city: "Boydton", state: "VA", mw: 750, lat: 36.66, lng: -78.38, notes: "Southern Virginia Azure cloud & AI anchor campus." },
+      { id: 20, name: "AWS Ashburn / Loudoun Cluster", operator: "AWS", status: "Operating", city: "Ashburn", state: "VA", mw: 720, lat: 39.04, lng: -77.48, notes: "Core of US-East-1 in Data Center Alley." },
+      { id: 21, name: "Google The Dalles Complex", operator: "Google", status: "Operating", city: "The Dalles", state: "OR", mw: 680, lat: 45.62, lng: -121.19, notes: "Columbia River hydro-powered flagship campus." },
+      { id: 22, name: "Meta Prineville Campus", operator: "Meta", status: "Operating", city: "Prineville", state: "OR", mw: 640, lat: 44.28, lng: -120.88, notes: "High-desert evaporative cooling hyperscale campus." },
+      { id: 23, name: "Applied Digital Polaris Forge", operator: "Applied Digital", status: "Under Construction", city: "Ellendale", state: "ND", mw: 600, lat: 46.00, lng: -98.52, notes: "Purpose-built liquid-cooled AI factory in North Dakota." },
+      { id: 24, name: "AWS Canton / Madison County", operator: "AWS", status: "Under Construction", city: "Canton", state: "MS", mw: 600, lat: 32.61, lng: -90.03, notes: "$10B Mississippi statewide cloud infrastructure investment." },
+      { id: 25, name: "Microsoft Cheyenne AI Hub", operator: "Microsoft", status: "Operating", city: "Cheyenne", state: "WY", mw: 580, lat: 41.10, lng: -104.88, notes: "High-altitude free-air cooled Azure AI region." },
+      { id: 26, name: "Google Pryor MidAmerica Campus", operator: "Google", status: "Operating", city: "Pryor", state: "OK", mw: 560, lat: 36.24, lng: -95.28, notes: "Major Central US Google Cloud & AI facility." },
+      { id: 27, name: "Meta Eagle Mountain", operator: "Meta", status: "Operating", city: "Eagle Mountain", state: "UT", mw: 550, lat: 40.31, lng: -112.01, notes: "100% renewable-matched Utah hyperscale campus." },
+      { id: 28, name: "Vantage Quincy Campus", operator: "Vantage", status: "Operating", city: "Quincy", state: "WA", mw: 520, lat: 47.23, lng: -119.85, notes: "Columbia Basin hydropowered wholesale campus." },
+      { id: 29, name: "QTS Phoenix Mega-Campus", operator: "QTS", status: "Operating", city: "Phoenix", state: "AZ", mw: 510, lat: 33.41, lng: -112.01, notes: "Major Southwest interconnect and cloud campus." },
+      { id: 30, name: "Google Lenoir Campus", operator: "Google", status: "Operating", city: "Lenoir", state: "NC", mw: 500, lat: 35.90, lng: -81.54, notes: "Western North Carolina flagship cloud campus." },
+      { id: 31, name: "Apple Maiden Data Center", operator: "Apple / Other", status: "Operating", city: "Maiden", state: "NC", mw: 480, lat: 35.58, lng: -81.21, notes: "iCloud & Apple Intelligence East Coast hub." },
+      { id: 32, name: "Google New Albany Campus", operator: "Google", status: "Operating", city: "New Albany", state: "OH", mw: 480, lat: 40.09, lng: -82.75, notes: "Central Ohio Google Cloud expansion." },
+      { id: 33, name: "Meta Los Lunas Campus", operator: "Meta", status: "Operating", city: "Los Lunas", state: "NM", mw: 460, lat: 34.81, lng: -106.78, notes: "Solar-supported AI & social infrastructure hub." },
+      { id: 34, name: "Microsoft San Antonio Cluster", operator: "Microsoft", status: "Operating", city: "San Antonio", state: "TX", mw: 450, lat: 29.41, lng: -98.65, notes: "South Central US Azure availability zone." },
+      { id: 35, name: "Meta Gallatin Campus", operator: "Meta", status: "Operating", city: "Gallatin", state: "TN", mw: 440, lat: 36.36, lng: -86.49, notes: "TVA-powered Tennessee hyperscale campus." },
+      { id: 36, name: "Google Storey County (Tahoe Reno)", operator: "Google", status: "Operating", city: "Sparks", state: "NV", mw: 430, lat: 39.54, lng: -119.46, notes: "Geothermal-backed Nevada cloud campus." },
+      { id: 37, name: "Microsoft Goodyear / El Mirage", operator: "Microsoft", status: "Operating", city: "Goodyear", state: "AZ", mw: 420, lat: 33.43, lng: -112.39, notes: "West Valley Phoenix Azure cluster." },
+      { id: 38, name: "Meta Dekalb Campus", operator: "Meta", status: "Operating", city: "DeKalb", state: "IL", mw: 410, lat: 41.89, lng: -88.74, notes: "Northern Illinois hyperscale facility." },
+      { id: 39, name: "AWS Hillsboro Campus", operator: "AWS", status: "Operating", city: "Hillsboro", state: "OR", mw: 400, lat: 45.54, lng: -122.96, notes: "US-West-2 hub with trans-Pacific subsea cable access." },
+      { id: 40, name: "Microsoft Becker AI Campus", operator: "Microsoft", status: "Proposed", city: "Becker", state: "MN", mw: 400, lat: 45.39, lng: -93.88, notes: "Planned next to retired Sherco coal plant grid interconnect." },
+      { id: 41, name: "Meta Rosemount Campus", operator: "Meta", status: "Under Construction", city: "Rosemount", state: "MN", mw: 380, lat: 44.74, lng: -93.12, notes: "$800M+ Twin Cities metro AI data center." },
+      { id: 42, name: "Google Red Oak Campus", operator: "Google", status: "Under Construction", city: "Red Oak", state: "TX", mw: 380, lat: 32.53, lng: -96.81, notes: "Dallas-Fort Worth south corridor cloud facility." },
+      { id: 43, name: "Digital Realty Elk Grove Village", operator: "Digital Realty / Other", status: "Operating", city: "Elk Grove Village", state: "IL", mw: 360, lat: 42.00, lng: -87.98, notes: "O'Hare corridor enterprise & cloud hub." },
+      { id: 44, name: "Oracle Salt Lake City AI Hub", operator: "Oracle", status: "Operating", city: "Salt Lake City", state: "UT", mw: 350, lat: 40.76, lng: -112.02, notes: "OCI GPU supercluster deployment." },
+      { id: 45, name: "Vantage New Albany Campus", operator: "Vantage", status: "Under Construction", city: "New Albany", state: "OH", mw: 340, lat: 40.07, lng: -82.81, notes: "Wholesale hyperscale buildout in Central Ohio." },
+      { id: 46, name: "Google Papillion Campus", operator: "Google", status: "Operating", city: "Papillion", state: "NE", mw: 320, lat: 41.13, lng: -96.04, notes: "Omaha metro cloud & AI campus." }
+    ];
+
+    // =========================================================================
+    // 3. STATE MANAGEMENT & INITIALIZATION
+    // =========================================================================
+    let customCampuses = JSON.parse(localStorage.getItem("us_dc_custom_pins") || "[]");
+    let allCampuses = [...BASE_CAMPUSES, ...customCampuses];
+    let filteredCampuses = [...allCampuses];
+    let activeTab = "campuses";
+    let clickToPinMode = false;
+
+    // Initialize Leaflet Map centered on Continental US
+    const map = L.map("map", {
+      center: [39.5, -98.35],
+      zoom: 4,
+      minZoom: 3,
+      maxZoom: 18,
+      zoomControl: true
+    });
+
+    // CartoDB Dark Matter Basemap
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+      subdomains: "abcd",
+      maxZoom: 19
+    }).addTo(map);
+
+    const stateLayerGroup = L.layerGroup().addTo(map);
+    const campusLayerGroup = L.layerGroup().addTo(map);
+
+    // Populate State Dropdown
+    const stateFilterEl = document.getElementById("stateFilter");
+    [...STATE_DATA].sort((a, b) => a.name.localeCompare(b.name)).forEach(st => {
+      const opt = document.createElement("option");
+      opt.value = st.code;
+      opt.textContent = `${st.name} (${st.code}) — ${st.total} total`;
+      stateFilterEl.appendChild(opt);
+    });
+
+    // =========================================================================
+    // 4. RENDERING FUNCTIONS
+    // =========================================================================
+    function getStatusColor(status) {
+      if (status === "Operating") return "#34d399"; // emerald-400
+      if (status === "Under Construction") return "#fbbf24"; // amber-400
+      return "#c084fc"; // purple-400 (Proposed)
+    }
+
+    function getStatusBadgeClass(status) {
+      if (status === "Operating") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/40";
+      if (status === "Under Construction") return "bg-amber-500/15 text-amber-300 border-amber-500/40";
+      return "bg-purple-500/15 text-purple-300 border-purple-500/40";
+    }
+
+    function renderMapLayers() {
+      stateLayerGroup.clearLayers();
+      campusLayerGroup.clearLayers();
+
+      const showStates = document.getElementById("toggleStates").checked;
+      const showCampuses = document.getElementById("toggleCampuses").checked;
+      const selectedState = document.getElementById("stateFilter").value;
+
+      // 1. State Density Bubbles (All 50 States + DC)
+      if (showStates) {
+        STATE_DATA.forEach(st => {
+          if (selectedState !== "ALL" && st.code !== selectedState) return;
+          const size = Math.max(24, Math.min(62, 20 + Math.sqrt(st.total) * 1.45));
+          const icon = L.divIcon({
+            className: "",
+            html: `<div class="state-bubble" style="width:${size}px;height:${size}px;font-size:${size > 40 ? '12px' : '10px'};" title="${st.name}: ${st.total} facilities">${st.total}</div>`,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2]
+          });
+
+          const marker = L.marker([st.lat, st.lng], { icon });
+          marker.bindPopup(`
+            <div class="min-w-[210px] text-xs">
+              <div class="flex items-center justify-between border-b border-slate-700 pb-1.5 mb-2">
+                <span class="font-bold text-sm text-white">${st.name} (${st.code})</span>
+                <span class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-semibold">${st.total} Total</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 mb-2">
+                <div class="bg-slate-800/80 p-1.5 rounded">
+                  <span class="text-slate-400 block text-[10px]">Operating</span>
+                  <span class="font-bold text-emerald-400 text-sm">${st.operating}</span>
+                </div>
+                <div class="bg-slate-800/80 p-1.5 rounded">
+                  <span class="text-slate-400 block text-[10px]">Planned / U.C.</span>
+                  <span class="font-bold text-purple-400 text-sm">${st.pipeline}</span>
+                </div>
+              </div>
+              <div class="text-slate-400 text-[11px]"><strong class="text-slate-300">Primary Hubs:</strong> ${st.hub}</div>
+              <button onclick="filterByState('${st.code}')" class="mt-2.5 w-full py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-semibold cursor-pointer">
+                Filter Map to ${st.code}
+              </button>
+            </div>
+          `);
+          stateLayerGroup.addLayer(marker);
+        });
+      }
+
+      // 2. Hyperscale Campus Pins
+      if (showCampuses) {
+        filteredCampuses.forEach(dc => {
+          const color = getStatusColor(dc.status);
+          const radius = Math.max(7, Math.min(20, 6 + Math.sqrt(dc.mw) * 0.16));
+          const isGigawatt = dc.mw >= 1000;
+
+          const svgSize = radius * 3.2;
+          const center = svgSize / 2;
+          const pulseSvg = isGigawatt
+            ? `<circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="${color}" stroke-width="2" class="gw-pulse-ring" />`
+            : "";
+
+          const icon = L.divIcon({
+            className: "",
+            html: `
+              <svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}" style="overflow:visible;cursor:pointer;">
+                ${pulseSvg}
+                <circle cx="${center}" cy="${center}" r="${radius}" fill="${color}" fill-opacity="0.88" stroke="#0f172a" stroke-width="2" />
+              </svg>
+            `,
+            iconSize: [svgSize, svgSize],
+            iconAnchor: [center, center]
+          });
+
+          const marker = L.marker([dc.lat, dc.lng], { icon });
+          marker.bindPopup(`
+            <div class="min-w-[240px] text-xs">
+              <div class="flex items-start justify-between gap-2 border-b border-slate-700 pb-1.5 mb-2">
+                <div>
+                  <div class="font-bold text-sm text-white leading-snug">${dc.name}</div>
+                  <div class="text-slate-400 text-[11px]">${dc.city}, ${dc.state}</div>
+                </div>
+                <span class="px-2 py-0.5 rounded border text-[10px] font-semibold shrink-0 ${getStatusBadgeClass(dc.status)}">${dc.status}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2 mb-2">
+                <div class="bg-slate-800/80 p-1.5 rounded">
+                  <span class="text-slate-400 block text-[10px]">Operator</span>
+                  <span class="font-semibold text-slate-100">${dc.operator}</span>
+                </div>
+                <div class="bg-slate-800/80 p-1.5 rounded">
+                  <span class="text-slate-400 block text-[10px]">Target Capacity</span>
+                  <span class="font-bold text-amber-400">${dc.mw.toLocaleString()} MW</span>
+                </div>
+              </div>
+              <p class="text-slate-300 text-[11px] leading-relaxed">${dc.notes || "Hyperscale data center campus."}</p>
+              ${dc.isCustom ? `<div class="mt-2 text-[10px] text-cyan-400 font-semibold">Custom User Pin</div>` : ""}
+            </div>
+          `);
+          campusLayerGroup.addLayer(marker);
+        });
+      }
+    }
+
+    function renderSidebarList() {
+      const container = document.getElementById("listContainer");
+      container.innerHTML = "";
+
+      if (activeTab === "campuses") {
+        if (filteredCampuses.length === 0) {
+          container.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">No hyperscale campuses match your current filters.</div>`;
+          return;
+        }
+
+        const sorted = [...filteredCampuses].sort((a, b) => b.mw - a.mw);
+        sorted.forEach(dc => {
+          const item = document.createElement("div");
+          item.className = "p-3 hover:bg-slate-800/70 transition cursor-pointer";
+          item.onclick = () => {
+            map.flyTo([dc.lat, dc.lng], 8, { duration: 1.1 });
+          };
+          item.innerHTML = `
+            <div class="flex items-start justify-between gap-2">
+              <div class="font-semibold text-xs text-white">${dc.name}</div>
+              <span class="text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${getStatusBadgeClass(dc.status)}">${dc.status}</span>
+            </div>
+            <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+              <span>${dc.operator} &bull; ${dc.city}, ${dc.state}</span>
+              <span class="font-bold text-amber-400">${dc.mw.toLocaleString()} MW</span>
+            </div>
+          `;
+          container.appendChild(item);
+        });
+      } else {
+        const sortedStates = [...STATE_DATA].sort((a, b) => b.total - a.total);
+        sortedStates.forEach((st, idx) => {
+          const item = document.createElement("div");
+          item.className = "p-3 hover:bg-slate-800/70 transition cursor-pointer";
+          item.onclick = () => {
+            map.flyTo([st.lat, st.lng], 6, { duration: 1.0 });
+          };
+          item.innerHTML = `
+            <div class="flex items-center justify-between text-xs">
+              <div>
+                <span class="text-slate-500 font-mono mr-1.5">#${idx + 1}</span>
+                <span class="font-semibold text-white">${st.name} (${st.code})</span>
+              </div>
+              <span class="font-bold text-cyan-400">${st.total} facilities</span>
+            </div>
+            <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+              <span>${st.hub}</span>
+              <span>${st.operating} op / ${st.pipeline} plan</span>
+            </div>
+          `;
+          container.appendChild(item);
+        });
+      }
+    }
+
+    // =========================================================================
+    // 5. FILTERING, TABS & KPI UPDATES
+    // =========================================================================
+    function applyFilters() {
+      const q = document.getElementById("searchInput").value.trim().toLowerCase();
+      const status = document.getElementById("statusFilter").value;
+      const operator = document.getElementById("operatorFilter").value;
+      const state = document.getElementById("stateFilter").value;
+
+      filteredCampuses = allCampuses.filter(dc => {
+        if (status !== "ALL" && dc.status !== status) return false;
+        if (state !== "ALL" && dc.state !== state) return false;
+        if (operator !== "ALL") {
+          if (operator === "Other") {
+            const majors = ["OpenAI", "Microsoft", "Google", "AWS", "Meta", "Oracle", "xAI", "QTS", "Vantage"];
+            if (majors.some(m => dc.operator.toLowerCase().includes(m.toLowerCase()))) return false;
+          } else if (!dc.operator.toLowerCase().includes(operator.toLowerCase())) {
+            return false;
+          }
+        }
+        if (q) {
+          const hay = `${dc.name} ${dc.operator} ${dc.city} ${dc.state} ${dc.notes || ""}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+
+      // Update KPIs
+      document.getElementById("kpiFilteredCount").textContent = filteredCampuses.length;
+      document.getElementById("tabCampusCount").textContent = filteredCampuses.length;
+      const totalMW = filteredCampuses.reduce((sum, dc) => sum + (Number(dc.mw) || 0), 0);
+      document.getElementById("kpiFilteredMW").textContent = `${totalMW.toLocaleString()} MW`;
+
+      document.getElementById("clearCustomBtn").classList.toggle("hidden", customCampuses.length === 0);
+
+      renderMapLayers();
+      renderSidebarList();
+    }
+
+    function filterByState(stateCode) {
+      document.getElementById("stateFilter").value = stateCode;
+      applyFilters();
+    }
+
+    function resetFilters() {
+      document.getElementById("searchInput").value = "";
+      document.getElementById("statusFilter").value = "ALL";
+      document.getElementById("operatorFilter").value = "ALL";
+      document.getElementById("stateFilter").value = "ALL";
+      map.flyTo([39.5, -98.35], 4, { duration: 1.0 });
+      applyFilters();
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      const tabC = document.getElementById("tabCampuses");
+      const tabS = document.getElementById("tabStates");
+      if (tab === "campuses") {
+        tabC.className = "flex-1 py-2 text-center border-b-2 border-cyan-500 text-cyan-400 bg-slate-800/40 cursor-pointer";
+        tabS.className = "flex-1 py-2 text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer";
+      } else {
+        tabS.className = "flex-1 py-2 text-center border-b-2 border-cyan-500 text-cyan-400 bg-slate-800/40 cursor-pointer";
+        tabC.className = "flex-1 py-2 text-center border-b-2 border-transparent text-slate-400 hover:text-slate-200 cursor-pointer";
+      }
+      renderSidebarList();
+    }
+
+    // =========================================================================
+    // 6. CUSTOM PIN CREATION & CLICK-TO-PIN
+    // =========================================================================
+    function toggleClickToPin() {
+      clickToPinMode = !clickToPinMode;
+      const btn = document.getElementById("clickPinToggle");
+      const banner = document.getElementById("pinBanner");
+      if (clickToPinMode) {
+        btn.textContent = "📍 Click-to-Pin: ON";
+        btn.className = "px-2 py-1 rounded border border-cyan-400 bg-cyan-600 text-white text-[11px] font-semibold transition cursor-pointer";
+        banner.classList.remove("hidden");
+        document.getElementById("map").style.cursor = "crosshair";
+      } else {
+        btn.textContent = "📍 Click-to-Pin: OFF";
+        btn.className = "px-2 py-1 rounded border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition cursor-pointer";
+        banner.classList.add("hidden");
+        document.getElementById("map").style.cursor = "";
+      }
+    }
+
+    map.on("click", function(e) {
+      if (!clickToPinMode) return;
+      document.getElementById("newLat").value = e.latlng.lat.toFixed(4);
+      document.getElementById("newLng").value = e.latlng.lng.toFixed(4);
+      toggleClickToPin();
+      openAddModal();
+    });
+
+    function openAddModal() {
+      document.getElementById("addModal").classList.remove("hidden");
+    }
+
+    function closeAddModal() {
+      document.getElementById("addModal").classList.add("hidden");
+    }
+
+    function saveCustomCampus(e) {
+      e.preventDefault();
+      const newPin = {
+        id: Date.now(),
+        name: document.getElementById("newName").value.trim(),
+        operator: document.getElementById("newOperator").value.trim(),
+        status: document.getElementById("newStatus").value,
+        city: document.getElementById("newCity").value.trim(),
+        state: document.getElementById("newState").value.trim().toUpperCase(),
+        mw: Number(document.getElementById("newMW").value),
+        lat: Number(document.getElementById("newLat").value),
+        lng: Number(document.getElementById("newLng").value),
+        notes: document.getElementById("newNotes").value.trim(),
+        isCustom: true
+      };
+
+      customCampuses.push(newPin);
+      localStorage.setItem("us_dc_custom_pins", JSON.stringify(customCampuses));
+      allCampuses = [...BASE_CAMPUSES, ...customCampuses];
+      document.getElementById("addCampusForm").reset();
+      closeAddModal();
+      applyFilters();
+      map.flyTo([newPin.lat, newPin.lng], 8);
+    }
+
+    function resetCustomPins() {
+      if (!confirm("Remove all custom pins saved in your browser?")) return;
+      customCampuses = [];
+      localStorage.removeItem("us_dc_custom_pins");
+      allCampuses = [...BASE_CAMPUSES];
+      applyFilters();
+    }
+
+    // =========================================================================
+    // 7. CSV & JSON EXPORTS
+    // =========================================================================
+    function downloadFile(filename, content, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportCSV() {
+      const headers = ["Name", "Operator", "Status", "City", "State", "Capacity_MW", "Latitude", "Longitude", "Notes"];
+      const rows = filteredCampuses.map(dc => [
+        `"${dc.name.replace(/"/g, '""')}"`,
+        `"${dc.operator.replace(/"/g, '""')}"`,
+        `"${dc.status}"`,
+        `"${dc.city.replace(/"/g, '""')}"`,
+        `"${dc.state}"`,
+        dc.mw,
+        dc.lat,
+        dc.lng,
+        `"${(dc.notes || "").replace(/"/g, '""')}"`
+      ].join(","));
+      downloadFile("us_data_centers_2026.csv", [headers.join(","), ...rows].join("\n"), "text/csv;charset=utf-8;");
+    }
+
+    function exportJSON() {
+      const payload = {
+        generatedAt: new Date().toISOString(),
+        filteredCampuses,
+        stateTotals: STATE_DATA
+      };
+      downloadFile("us_data_centers_2026.json", JSON.stringify(payload, null, 2), "application/json");
+    }
+
+    // Initial render
+    applyFilters();
+  </script>
+</body>
+</html>
